@@ -61,7 +61,7 @@ const server=http.createServer(async(req,res)=>{
       // Behind a proxy this coarse limiter is intentionally shared (not trusting spoofable X-Forwarded-For).
       rate('create:'+req.socket.remoteAddress,30);if(rooms.size>=MAX_ROOMS)return json(res,503,{error:'Сервер заполнен. Попробуйте позже'});
       const b=await body(req);let code;do{code=String(randomInt(100000,1000000));}while(rooms.has(code));
-      const r=createRoom(code,b.capacity,b.roundCount);persist(r);rooms.set(code,r);
+      const r=createRoom(code,b.capacity,b.questionCount);persist(r);rooms.set(code,r);
       return json(res,201,{code,token:r.host,role:'host'});
     }
     const match=pathname.match(/^\/api\/rooms\/(\d{6})\/(join|state|events|action)$/);
