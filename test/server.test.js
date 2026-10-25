@@ -23,10 +23,10 @@ test('HTTP: SSE, authority, racing buzz, duplicate grading, persistence, private
  const act=async(type,payload={},token=host)=>req(prefix+'/action',{type,payload,revision:(await state(token)).revision},token);
  assert.equal((await act('start',{},a.token)).status,400);await act('start');await act('select',{cat:0,index:0});await act('open');
  const before=await state(a.token);assert.equal(before.active.answer,undefined);
- const abort=new AbortController();const stream=await fetch(base+prefix+'/events',{headers:{Authorization:'Bearer '+a.token},signal:abort.signal});assert.equal(stream.status,200);const reader=stream.body.getReader();const packet=new TextDecoder().decode((await reader.read()).value);assert.ok(packet.includes('data: '));assert.ok(!packet.includes('Титаник'));
+ const abort=new AbortController();const stream=await fetch(base+prefix+'/events',{headers:{Authorization:'Bearer '+a.token},signal:abort.signal});assert.equal(stream.status,200);const reader=stream.body.getReader();const packet=new TextDecoder().decode((await reader.read()).value);assert.ok(packet.includes('data: '));assert.ok(!packet.includes('Скотч.'));
  const results=await Promise.all([a,b].map(p=>req(prefix+'/action',{type:'buzz',payload:{},revision:before.revision},p.token)));
  assert.equal(results.filter(r=>r.status===200).length,1);assert.equal(results.filter(r=>r.status===409).length,1);
- let live='';while(!live.includes('"phase":"answering"')){const next=await reader.read();assert.equal(next.done,false);live+=new TextDecoder().decode(next.value);}assert.ok(!live.includes('Титаник'));abort.abort();
+ let live='';while(!live.includes('"phase":"answering"')){const next=await reader.read();assert.equal(next.done,false);live+=new TextDecoder().decode(next.value);}assert.ok(!live.includes('Скотч.'));abort.abort();
  const answering=await state(host);const verdict={type:'correct',revision:answering.revision};assert.equal((await req(prefix+'/action',verdict,host)).status,200);assert.equal((await req(prefix+'/action',verdict,host)).status,409);
  const after=await state(a.token);assert.equal(after.phase,'reveal');assert.ok(after.active.answer);assert.equal(after.players.reduce((s,p)=>s+p.score,0),100);
  await stop();await start();assert.equal((await state(host)).phase,'reveal');assert.equal((await state(host)).players.reduce((s,p)=>s+p.score,0),100);
