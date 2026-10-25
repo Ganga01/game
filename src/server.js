@@ -38,8 +38,12 @@ async function body(req) {
   const chunks=[];let bytes=0;for await(const chunk of req) {bytes+=chunk.length; if(bytes>8192)throw new Error('Слишком большой запрос');chunks.push(chunk);}
   const value=JSON.parse(Buffer.concat(chunks).toString('utf8')||'{}');if(!value||typeof value!=='object'||Array.isArray(value))throw new Error('Некорректный запрос');return value;
 }
-const STATIC={'/':'index.html','/app.js':'app.js','/styles.css':'styles.css','/icon.svg':'icon.svg','/manifest.webmanifest':'manifest.webmanifest'};
-const MIME={'.html':'text/html; charset=utf-8','.js':'text/javascript; charset=utf-8','.css':'text/css; charset=utf-8','.svg':'image/svg+xml','.webmanifest':'application/manifest+json'};
+const STATIC={'/':'index.html','/app.js':'app.js','/styles.css':'styles.css','/icon.svg':'icon.svg','/manifest.webmanifest':'manifest.webmanifest',
+  '/memes/doge.jpg':'memes/doge.jpg','/memes/this_is_fine.jpg':'memes/this_is_fine.jpg','/memes/distracted_boyfriend.jpg':'memes/distracted_boyfriend.jpg',
+  '/memes/woman_yelling_cat.jpg':'memes/woman_yelling_cat.jpg','/memes/grumpy_cat.jpg':'memes/grumpy_cat.jpg','/memes/roll_safe.jpg':'memes/roll_safe.jpg',
+  '/memes/hide_pain_harold.jpg':'memes/hide_pain_harold.jpg','/memes/success_kid.jpg':'memes/success_kid.jpg','/memes/confused_math.jpg':'memes/confused_math.jpg',
+  '/memes/shocked_cat.jpg':'memes/shocked_cat.jpg'};
+const MIME={'.html':'text/html; charset=utf-8','.js':'text/javascript; charset=utf-8','.css':'text/css; charset=utf-8','.svg':'image/svg+xml','.webmanifest':'application/manifest+json','.jpg':'image/jpeg'};
 const server=http.createServer(async(req,res)=>{
   res.setHeader('X-Content-Type-Options','nosniff');res.setHeader('Referrer-Policy','no-referrer');
   res.setHeader('Content-Security-Policy',"default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self'; connect-src 'self'; object-src 'none'; frame-ancestors 'none'; base-uri 'none'; form-action 'self'");

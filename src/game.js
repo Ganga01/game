@@ -109,15 +109,9 @@ export function tick(room, now=Date.now()) {
     g.nextModifierAt=now+randomInt(30000,90001);changed=true;
   }
   if(['board','reading','open','answering'].includes(g.phase)&&g.nextModifierAt&&g.nextModifierAt<=now&&!g.modifier){
-    if(randomInt(0,2)===0){
-      for(const p of room.players)p.score=-p.score;
-      g.modifierNotice='Случайный модификатор: обмен очков — знак счёта каждого игрока изменён на противоположный.';
-      g.message=g.modifierNotice;
-    }else{
-      g.modifier={type:'approx',key:g.active?.key||null};
-      g.modifierNotice='Случайный модификатор: приблизительный ответ. Ведущий может засчитать близкий ответ за половину стоимости вопроса.';
-      g.message=g.modifierNotice;
-    }
+    g.modifier={type:'approx',key:g.active?.key||null};
+    g.modifierNotice='Случайный модификатор: приблизительный ответ. Ведущий может засчитать близкий ответ за половину стоимости вопроса.';
+    g.message=g.modifierNotice;
     g.nextModifierAt=now+randomInt(45000,120001);changed=true;
   }
   if (!g.active?.deadline || g.active.deadline > now) return changed;
@@ -137,5 +131,6 @@ export function view(room, who, online = new Set()) {
     board:PACK[g.round].categories.map((c,ci)=>({title:c.title,questions:c.questions.map((_,i)=>({
       value:(i+1)*100*(g.round+1),used:g.used.includes(`${g.round}:${ci}:${i}`)}))})),
     active:a?{...a,category:PACK[g.round].categories[a.cat].title,q:q.q,
+      ...(q.image?{image:q.image}:{}),
       ...(g.phase==='reveal'||who.host?{answer:q.a,note:q.note||''}:{})}:null};
 }
