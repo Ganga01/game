@@ -1,0 +1,14 @@
+services:
+  svoyak:
+    build: .
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    environment:
+      PORT: 3000
+      DATA_DIR: /app/runtime
+      NODE_ENV: production
+    volumes:
+      - svoyak-data:/app/runtime
+volumes:
+  svoyak-data:

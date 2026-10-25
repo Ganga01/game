@@ -1,0 +1,6 @@
+{
+  "name": "svoyak-party", "version": "1.0.0", "private": true,
+  "description": "Мобильная сетевая викторина для компании", "type": "module",
+  "engines": { "node": ">=22" },
+  "scripts": { "start": "node src/server.js", "test": "node --test", "check": "node --check src/server.js && node --check src/game.js && node --check public/app.js" }
+}
