@@ -105,6 +105,9 @@ export function action(room, who, type, payload = {}, now = Date.now()) {
 export function tick(room, now=Date.now()) {
   const g=room.game;
   let changed=false;
+  if(!g.nextModifierAt&&!['lobby','finished'].includes(g.phase)){
+    g.nextModifierAt=now+randomInt(30000,90001);changed=true;
+  }
   if(['board','reading','open','answering'].includes(g.phase)&&g.nextModifierAt&&g.nextModifierAt<=now&&!g.modifier){
     if(randomInt(0,2)===0){
       for(const p of room.players)p.score=-p.score;
