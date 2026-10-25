@@ -3,10 +3,11 @@ import { readFileSync } from 'node:fs';
 export const PACK = JSON.parse(readFileSync(new URL('../data/questions.json', import.meta.url)));
 export const secret = () => randomBytes(24).toString('hex');
 const fail = (condition, message) => { if (!condition) throw new Error(message); };
-export function createRoom(code, capacity = 4, roundCount = 2) {
+export function createRoom(code, capacity = 4, questionCount = 60) {
   fail(Number.isInteger(capacity) && capacity >= 2 && capacity <= 12, 'Выберите от 2 до 12 игроков');
-  fail(roundCount === 1 || roundCount === 2, 'Выберите один или два раунда');
-  return {code, host: secret(), capacity, roundCount, created: Date.now(), updated: Date.now(), revision: 0,
+  fail([30,60,90,120].includes(questionCount), 'Выберите 30, 60, 90 или 120 вопросов');
+  const roundCount = Math.ceil(questionCount / 60);
+  return {code, host: secret(), capacity, roundCount, questionCount, created: Date.now(), updated: Date.now(), revision: 0,
     players: [], game: {phase:'lobby', round:0, used:[], active:null, chooser:null, message:'Ждём игроков'}, undo:null};
 }
 export function join(room, name) {
@@ -30,7 +31,7 @@ function wrong(room, now) {
   const g = room.game, a = g.active, p = room.players.find(p => p.id === a.buzzer);
   p.score -= a.value; a.blocked.push(p.id); a.buzzer = null;
   if (a.blocked.length >= room.players.length) reveal(room, 'Никто не угадал. Бывает даже у знатоков');
-  else { g.phase = 'open'; a.deadline = now + 20000; g.message = `${p.name}: −${a.value}. Остальные могут нажимать!`; }
+  else { g.phase = 'open'; a.deadline = now + 30000; g.message = `${p.name}: −${a.value}. Остальные могут нажимать!`; }
 }
 // Все переходы синхронны: первый принятый сервером buzz закрывает приём остальных.
 export function action(room, who, type, payload = {}, now = Date.now()) {
@@ -39,7 +40,7 @@ export function action(room, who, type, payload = {}, now = Date.now()) {
     fail(!who.host, 'Ведущий не участвует в гонке кнопок');
     fail(g.phase === 'open' && a.deadline > now, 'Кнопка пока закрыта или уже нажата');
     fail(!a.blocked.includes(who.id), 'Вы уже отвечали на этот вопрос');
-    room.undo = null; a.buzzer = who.id; a.deadline = now + 15000; g.phase = 'answering';
+    room.undo = null; a.buzzer = who.id; a.deadline = now + 30000; g.phase = 'answering';
     g.message = `${room.players.find(p=>p.id===who.id).name} отвечает`; return;
   }
   fail(who.host, 'Это действие доступно только ведущему');
@@ -57,7 +58,7 @@ export function action(room, who, type, payload = {}, now = Date.now()) {
     g.active = {cat,index,key,value:(index+1)*100*(g.round+1), blocked:[],buzzer:null,deadline:null};
     g.phase='reading'; g.message='Читаем вопрос. Кнопка откроется по команде ведущего'; room.undo=null;
   } else if (type === 'open') {
-    fail(g.phase === 'reading', 'Кнопки уже открыты'); g.phase='open'; a.deadline=now+20000; g.message='Знаете ответ? Жмите!';
+    fail(g.phase === 'reading', 'Кнопки уже открыты'); g.phase='open'; a.deadline=now+30000; g.message='Знаете ответ? Жмите!';
   } else if (type === 'correct' || type === 'wrong') {
     fail(g.phase === 'answering', 'Сейчас никто не отвечает');
     room.undo = {game:structuredClone(g), scores:room.players.map(p=>[p.id,p.score])};
@@ -73,12 +74,14 @@ export function action(room, who, type, payload = {}, now = Date.now()) {
     fail(room.undo, 'Нет оценки для отмены');
     room.game=room.undo.game;
     for (const [id,score] of room.undo.scores) { const p=room.players.find(p=>p.id===id); if(p)p.score=score; }
-    room.game.active.deadline=now+15000; room.undo=null;
+    room.game.active.deadline=now+30000; room.undo=null;
   } else if (type === 'next') {
     fail(g.phase === 'reveal', 'Сначала откройте ответ');
     g.used.push(a.key); g.active=null; room.undo=null;
-    const done=g.used.filter(key=>key.startsWith(`${g.round}:`)).length===30;
-    g.phase=done ? (g.round+1===room.roundCount ? 'finished' : 'roundEnd') : 'board';
+    const inRound=g.used.filter(key=>key.startsWith(`${g.round}:`)).length;
+    const done=g.used.length>=room.questionCount;
+    const roundDone=inRound>=PACK[g.round].categories.reduce((sum,c)=>sum+c.questions.length,0);
+    g.phase=done ? 'finished' : roundDone ? 'roundEnd' : 'board';
     g.message=done ? 'Раунд завершён' : 'Выберите следующий вопрос';
   } else if (type === 'nextRound') {
     fail(g.phase==='roundEnd', 'Раунд ещё идёт'); g.round++; g.phase='board'; g.message='Стоимость вопросов удвоилась';
@@ -98,7 +101,7 @@ export function tick(room, now=Date.now()) {
 }
 export function view(room, who, online = new Set()) {
   const g=room.game, a=g.active, q=question(room);
-  return {code:room.code,capacity:room.capacity,roundCount:room.roundCount,revision:room.revision,serverTime:Date.now(),
+  return {code:room.code,capacity:room.capacity,roundCount:room.roundCount,questionCount:room.questionCount,answeredCount:g.used.length,revision:room.revision,serverTime:Date.now(),
     role:who.host?'host':'player',me:who.id||null,phase:g.phase,round:g.round,title:PACK[g.round].title,
     message:g.message,chooser:g.chooser,canUndo:who.host&&!!room.undo,
     players:room.players.map(({id,name,score})=>({id,name,score,online:online.has(id)})),

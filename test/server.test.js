@@ -15,7 +15,7 @@ async function stop(){const p=once(child,'exit');child.kill('SIGTERM');await p;}
 async function req(url,data,token){const res=await fetch(base+url,{method:data?'POST':'GET',headers:{...(data?{'Content-Type':'application/json'}:{}),...(token?{Authorization:'Bearer '+token}:{})},body:data?JSON.stringify(data):undefined});return {status:res.status,body:await res.json()};}
 test('HTTP: SSE, authority, racing buzz, duplicate grading, persistence, private data',{timeout:20000},async()=>{
  try{
- await start();const created=await req('/api/rooms',{capacity:2,roundCount:1});assert.equal(created.status,201);
+ await start();const created=await req('/api/rooms',{capacity:2,questionCount:30});assert.equal(created.status,201);
  const {code,token:host}=created.body,prefix=`/api/rooms/${code}`;
  const a=(await req(prefix+'/join',{name:'Первый'})).body,b=(await req(prefix+'/join',{name:'Второй'})).body;
  assert.equal((await req('/data/questions.json')).status,404);assert.equal((await req('/src/game.js')).status,404);assert.equal((await req(prefix+'/state',null,'invalid')).status,401);
