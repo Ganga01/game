@@ -1,4 +1,4 @@
-import { randomBytes, randomUUID } from 'node:crypto';
+import { randomBytes, randomUUID, randomInt } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 export const PACK = JSON.parse(readFileSync(new URL('../data/questions.json', import.meta.url)));
 export const secret = () => randomBytes(24).toString('hex');
@@ -8,7 +8,7 @@ export function createRoom(code, capacity = 4, questionCount = 60) {
   fail([30,60,90,120].includes(questionCount), 'Выберите 30, 60, 90 или 120 вопросов');
   const roundCount = Math.ceil(questionCount / 60);
   return {code, host: secret(), capacity, roundCount, questionCount, created: Date.now(), updated: Date.now(), revision: 0,
-    players: [], game: {phase:'lobby', round:0, used:[], active:null, chooser:null, message:'Ждём игроков'}, undo:null};
+    players: [], game: {phase:'lobby', round:0, used:[], active:null, chooser:null, message:'Ждём игроков', modifier:null, modifierNotice:'', nextModifierAt:null}, undo:null};
 }
 export function join(room, name) {
   fail(room.game.phase === 'lobby', 'Игра уже началась. Вернуться можно из того же браузера');
@@ -47,6 +47,7 @@ export function action(room, who, type, payload = {}, now = Date.now()) {
   if (type === 'start') {
     fail(g.phase === 'lobby' && room.players.length >= 2, 'Нужно минимум два игрока');
     g.phase = 'board'; g.chooser = room.players[0].id; g.message = 'Выберите тему и стоимость';
+    g.nextModifierAt=now+randomInt(30000,90001);
   } else if (type === 'kick') {
     fail(g.phase === 'lobby', 'Удалять игроков можно до начала игры');
     room.players = room.players.filter(p=>p.id!==payload.id);
@@ -56,16 +57,24 @@ export function action(room, who, type, payload = {}, now = Date.now()) {
     fail(Number.isInteger(cat) && Number.isInteger(index) && PACK[g.round].categories[cat]?.questions[index], 'Нет такого вопроса');
     const key = `${g.round}:${cat}:${index}`; fail(!g.used.includes(key), 'Вопрос уже сыгран');
     g.active = {cat,index,key,value:(index+1)*100*(g.round+1), blocked:[],buzzer:null,deadline:null};
+    if(g.modifier?.type==='approx'&&!g.modifier.key)g.modifier.key=key;
     g.phase='reading'; g.message='Читаем вопрос. Кнопка откроется по команде ведущего'; room.undo=null;
   } else if (type === 'open') {
     fail(g.phase === 'reading', 'Кнопки уже открыты'); g.phase='open'; a.deadline=now+30000; g.message='Знаете ответ? Жмите!';
-  } else if (type === 'correct' || type === 'wrong') {
+  } else if (type === 'correct' || type === 'wrong' || type === 'approx') {
     fail(g.phase === 'answering', 'Сейчас никто не отвечает');
+    if(type==='approx')fail(g.modifier?.type==='approx'&&g.modifier.key===a.key,'Сейчас нельзя засчитать приблизительный ответ');
     room.undo = {game:structuredClone(g), scores:room.players.map(p=>[p.id,p.score])};
     if (type === 'wrong') wrong(room, now);
     else {
-      const p = room.players.find(p=>p.id===a.buzzer); p.score += a.value; g.chooser=p.id;
-      reveal(room, `${p.name}: +${a.value}. Красиво!`);
+      const p = room.players.find(p=>p.id===a.buzzer), award=type==='approx'?Math.max(1,Math.floor(a.value/2)):a.value;
+      p.score += award; g.chooser=p.id;
+      if(type==='approx'){
+        g.modifier=null;
+        g.modifierNotice='Модификатор использован: близкий ответ засчитан за половину очков.';
+        g.nextModifierAt=now+randomInt(45000,120001);
+      }
+      reveal(room, `${p.name}: +${award}${type==='approx'?' за приблизительный ответ. Засчитано!':'. Красиво!'}`);
     }
   } else if (type === 'reveal') {
     fail(['reading','open','answering'].includes(g.phase), 'Нет открытого вопроса');
@@ -77,6 +86,9 @@ export function action(room, who, type, payload = {}, now = Date.now()) {
     room.game.active.deadline=now+30000; room.undo=null;
   } else if (type === 'next') {
     fail(g.phase === 'reveal', 'Сначала откройте ответ');
+    if(g.modifier?.type==='approx'&&g.modifier.key===a.key)g.modifier=null;
+    g.modifierNotice='';
+    if(!g.nextModifierAt||g.nextModifierAt<=now)g.nextModifierAt=now+randomInt(45000,120001);
     g.used.push(a.key); g.active=null; room.undo=null;
     const inRound=g.used.filter(key=>key.startsWith(`${g.round}:`)).length;
     const done=g.used.length>=room.questionCount;
@@ -87,23 +99,37 @@ export function action(room, who, type, payload = {}, now = Date.now()) {
     fail(g.phase==='roundEnd', 'Раунд ещё идёт'); g.round++; g.phase='board'; g.message='Стоимость вопросов удвоилась';
   } else if (type === 'finish') {
     fail(!['lobby','finished'].includes(g.phase), 'Нельзя завершить игру сейчас');
-    g.phase='finished'; g.active=null; room.undo=null; g.message='Игра завершена ведущим';
+    g.phase='finished'; g.active=null; g.modifier=null; room.undo=null; g.message='Игра завершена ведущим';
   } else throw new Error('Неизвестное действие');
 }
 export function tick(room, now=Date.now()) {
   const g=room.game;
-  if (!g.active?.deadline || g.active.deadline > now) return false;
+  let changed=false;
+  if(['board','reading','open','answering'].includes(g.phase)&&g.nextModifierAt&&g.nextModifierAt<=now&&!g.modifier){
+    if(randomInt(0,2)===0){
+      for(const p of room.players)p.score=-p.score;
+      g.modifierNotice='Случайный модификатор: обмен очков — знак счёта каждого игрока изменён на противоположный.';
+      g.message=g.modifierNotice;
+    }else{
+      g.modifier={type:'approx',key:g.active?.key||null};
+      g.modifierNotice='Случайный модификатор: приблизительный ответ. Ведущий может засчитать близкий ответ за половину стоимости вопроса.';
+      g.message=g.modifierNotice;
+    }
+    g.nextModifierAt=now+randomInt(45000,120001);changed=true;
+  }
+  if (!g.active?.deadline || g.active.deadline > now) return changed;
   if(g.phase==='answering') {
     room.undo={game:structuredClone(g),scores:room.players.map(p=>[p.id,p.score])}; wrong(room,now);
   } else if(g.phase==='open') { room.undo=null; reveal(room,'Время вышло. Смотрим ответ'); }
-  else return false;
+  else return changed;
   return true;
 }
 export function view(room, who, online = new Set()) {
   const g=room.game, a=g.active, q=question(room);
   return {code:room.code,capacity:room.capacity,roundCount:room.roundCount,questionCount:room.questionCount,answeredCount:g.used.length,revision:room.revision,serverTime:Date.now(),
     role:who.host?'host':'player',me:who.id||null,phase:g.phase,round:g.round,title:PACK[g.round].title,
-    message:g.message,chooser:g.chooser,canUndo:who.host&&!!room.undo,
+    message:g.message,chooser:g.chooser,canUndo:who.host&&!!room.undo,modifier:g.modifier?.type||null,
+    modifierNotice:g.modifierNotice||'',approximateActive:!!(a&&g.modifier?.type==='approx'&&g.modifier.key===a.key),
     players:room.players.map(({id,name,score})=>({id,name,score,online:online.has(id)})),
     board:PACK[g.round].categories.map((c,ci)=>({title:c.title,questions:c.questions.map((_,i)=>({
       value:(i+1)*100*(g.round+1),used:g.used.includes(`${g.round}:${ci}:${i}`)}))})),
